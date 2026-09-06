@@ -26,7 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.components.AvatarCircle
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.AppPage
 import com.example.ui.viewmodel.HrisViewModel
@@ -47,6 +47,9 @@ fun MainAppShell(
   val attendances by viewModel.allAttendances.collectAsState()
   val isSyncing by viewModel.isSyncing.collectAsState()
   val lastSyncTime by viewModel.lastSyncTime.collectAsState()
+  val githubUpdate by viewModel.githubUpdate.collectAsState()
+  val showUpdateDialog by viewModel.showUpdateDialog.collectAsState()
+  val showRepoSettingsDialog by viewModel.showRepoSettingsDialog.collectAsState()
 
   val todayDate = remember {
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -324,6 +327,21 @@ fun MainAppShell(
           )
 
           SidebarNavItem(
+            title = if (githubUpdate?.hasUpdate == true) "Pembaruan Tersedia!" else "Pembaruan GitHub",
+            icon = Icons.Default.SystemUpdateAlt,
+            selected = false,
+            textColor = if (githubUpdate?.hasUpdate == true) Color(0xFF0284C7) else BentoSlate700,
+            onClick = {
+              scope.launch { drawerState.close() }
+              if (githubUpdate?.hasUpdate == true) {
+                viewModel.openUpdateDialog()
+              } else {
+                viewModel.openRepoSettings()
+              }
+            }
+          )
+
+          SidebarNavItem(
             title = "Keluar Akun",
             icon = Icons.Default.Logout,
             selected = false,
@@ -400,6 +418,35 @@ fun MainAppShell(
                     fontWeight = FontWeight.SemiBold,
                     color = BentoSlate800
                   )
+                }
+              }
+
+              // GitHub Update button
+              IconButton(
+                onClick = {
+                  if (githubUpdate?.hasUpdate == true) viewModel.openUpdateDialog()
+                  else viewModel.openRepoSettings()
+                },
+                modifier = Modifier
+                  .size(34.dp)
+                  .padding(end = 4.dp)
+              ) {
+                Box {
+                  Icon(
+                    imageVector = Icons.Default.SyncAlt,
+                    contentDescription = "Pembaruan GitHub",
+                    tint = if (githubUpdate?.hasUpdate == true) Color(0xFF0284C7) else BentoSlate600,
+                    modifier = Modifier.size(20.dp)
+                  )
+                  if (githubUpdate?.hasUpdate == true) {
+                    Box(
+                      modifier = Modifier
+                        .size(8.dp)
+                        .align(Alignment.TopEnd)
+                        .clip(CircleShape)
+                        .background(Color(0xFFEF4444))
+                    )
+                  }
                 }
               }
 
@@ -600,6 +647,22 @@ fun MainAppShell(
           AppPage.REPORTS -> ReportsScreen(viewModel = viewModel)
           AppPage.ANNOUNCEMENTS -> AnnouncementsScreen(viewModel = viewModel)
         }
+      }
+    }
+
+    if (currentPage != AppPage.HOME) {
+      if (showUpdateDialog && githubUpdate != null) {
+        GitHubUpdateDetailDialog(
+          updateInfo = githubUpdate!!,
+          onDismiss = { viewModel.closeUpdateDialog() }
+        )
+      }
+
+      if (showRepoSettingsDialog) {
+        GitHubRepoSettingsDialog(
+          viewModel = viewModel,
+          onDismiss = { viewModel.closeRepoSettings() }
+        )
       }
     }
   }

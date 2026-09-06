@@ -161,11 +161,13 @@ jobs:
           ASSET_PATH="${TEMP_ASSET_DIR}/${ASSET_FILENAME}"
 
           cp "$SRC_APK" "$ASSET_PATH"
+          cp "$SRC_APK" "${TEMP_ASSET_DIR}/app-debug.apk"
 
           echo "Prepared release asset: $ASSET_PATH"
           echo "Asset filename: $ASSET_FILENAME"
           echo "asset_path=$ASSET_PATH" >> "$GITHUB_OUTPUT"
           echo "asset_filename=$ASSET_FILENAME" >> "$GITHUB_OUTPUT"
+          echo "standard_apk_path=${TEMP_ASSET_DIR}/app-debug.apk" >> "$GITHUB_OUTPUT"
 
       - name: Publish APK to GitHub Releases
         id: publish_release
@@ -224,6 +226,7 @@ jobs:
 
           gh release create "$RELEASE_TAG" \
             "$ASSET_PATH" \
+            "${{ steps.prepare_asset.outputs.standard_apk_path }}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TITLE" \
             --notes-file "$NOTES_PATH" \

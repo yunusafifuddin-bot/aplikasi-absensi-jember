@@ -4,7 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.*
+import com.example.data.remote.GitHubUpdateInfo
+import com.example.data.remote.GitHubUpdateService
 import com.example.data.repository.HrisRepository
+import com.example.util.NotificationHelper
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -68,6 +71,22 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
   private val _lastSyncTime = MutableStateFlow<String?>(null)
   val lastSyncTime: StateFlow<String?> = _lastSyncTime.asStateFlow()
 
+  // GitHub Update Tracking
+  private val _githubRepo = MutableStateFlow(GitHubUpdateService.getConfiguredRepo(application))
+  val githubRepo: StateFlow<String> = _githubRepo.asStateFlow()
+
+  private val _githubUpdate = MutableStateFlow<GitHubUpdateInfo?>(null)
+  val githubUpdate: StateFlow<GitHubUpdateInfo?> = _githubUpdate.asStateFlow()
+
+  private val _isCheckingUpdate = MutableStateFlow(false)
+  val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
+  private val _showUpdateDialog = MutableStateFlow(false)
+  val showUpdateDialog: StateFlow<Boolean> = _showUpdateDialog.asStateFlow()
+
+  private val _showRepoSettingsDialog = MutableStateFlow(false)
+  val showRepoSettingsDialog: StateFlow<Boolean> = _showRepoSettingsDialog.asStateFlow()
+
   // Selected filters
   val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
   private val _selectedMonth = MutableStateFlow(currentMonth)
@@ -91,7 +110,73 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
       updateGpsDistance()
       // Initial background sync with Google Apps Script
       syncDatabase(showFeedback = false)
+      // Check for GitHub updates on startup
+      checkAppUpdate(userInitiated = false)
     }
+  }
+
+  fun checkAppUpdate(userInitiated: Boolean = false) {
+    if (_isCheckingUpdate.value) return
+    viewModelScope.launch {
+      _isCheckingUpdate.value = true
+      try {
+        val app = getApplication<Application>()
+        val info = GitHubUpdateService.checkForUpdates(app, _githubRepo.value)
+        _githubUpdate.value = info
+        if (info != null && info.hasUpdate) {
+          // Record notified
+          GitHubUpdateService.recordNotified(app, info.latestVersion, info.latestCommitSha)
+          // Post Android system notification
+          NotificationHelper.showUpdateNotification(
+            context = app,
+            title = "Pembaruan Tersedia: ${info.latestVersion}",
+            message = "Versi baru dirilis di GitHub. Ketuk untuk mengunduh APK terbaru.",
+            downloadUrl = info.apkDownloadUrl ?: info.releasePageUrl
+          )
+          if (userInitiated) {
+            _showUpdateDialog.value = true
+            emitMessage("Pembaruan ditemukan: ${info.latestVersion}!")
+          }
+        } else if (userInitiated) {
+          emitMessage("Aplikasi sudah versi terbaru. Tidak ada perubahan file di GitHub.")
+        }
+      } catch (e: Exception) {
+        if (userInitiated) {
+          emitMessage("Gagal memeriksa pembaruan: ${e.message}")
+        }
+      } finally {
+        _isCheckingUpdate.value = false
+      }
+    }
+  }
+
+  fun setGithubRepo(repo: String) {
+    val clean = repo.trim()
+    _githubRepo.value = clean
+    GitHubUpdateService.saveConfiguredRepo(getApplication(), clean)
+    emitMessage("Repositori GitHub diubah ke: $clean")
+    checkAppUpdate(userInitiated = true)
+  }
+
+  fun dismissUpdate() {
+    _githubUpdate.value = null
+    _showUpdateDialog.value = false
+  }
+
+  fun openUpdateDialog() {
+    _showUpdateDialog.value = true
+  }
+
+  fun closeUpdateDialog() {
+    _showUpdateDialog.value = false
+  }
+
+  fun openRepoSettings() {
+    _showRepoSettingsDialog.value = true
+  }
+
+  fun closeRepoSettings() {
+    _showRepoSettingsDialog.value = false
   }
 
   fun syncDatabase(showFeedback: Boolean = true) {

@@ -35,6 +35,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint as AndroidPaint
@@ -60,6 +62,7 @@ fun DashboardScreen(
   modifier: Modifier = Modifier
 ) {
   val user by viewModel.currentUser.collectAsState()
+  val context = LocalContext.current
   val attendances by viewModel.allAttendances.collectAsState()
   val kasbons by viewModel.allKasbons.collectAsState()
   val shifts by viewModel.allShifts.collectAsState()
@@ -68,6 +71,10 @@ fun DashboardScreen(
   val cameraAttendanceType by viewModel.cameraAttendanceType.collectAsState()
   val isSyncing by viewModel.isSyncing.collectAsState()
   val lastSyncTime by viewModel.lastSyncTime.collectAsState()
+  val githubUpdate by viewModel.githubUpdate.collectAsState()
+  val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
+  val showUpdateDialog by viewModel.showUpdateDialog.collectAsState()
+  val showRepoSettingsDialog by viewModel.showRepoSettingsDialog.collectAsState()
 
   val todayDate = remember {
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -314,6 +321,42 @@ fun DashboardScreen(
               modifier = Modifier.size(24.dp)
             )
           }
+
+          // Top Right GitHub Sync & Update Button
+          Box(
+            modifier = Modifier
+              .size(46.dp)
+              .shadow(6.dp, RoundedCornerShape(15.dp))
+              .clip(RoundedCornerShape(15.dp))
+              .background(Color.White)
+              .border(
+                BorderStroke(
+                  1.dp,
+                  if (githubUpdate?.hasUpdate == true) Color(0xFF0284C7) else FormalBorder
+                ),
+                RoundedCornerShape(15.dp)
+              )
+              .clickable { viewModel.openRepoSettings() },
+            contentAlignment = Alignment.Center
+          ) {
+            Box {
+              Icon(
+                imageVector = Icons.Default.SyncAlt,
+                contentDescription = "Pembaruan GitHub",
+                tint = if (githubUpdate?.hasUpdate == true) Color(0xFF0284C7) else Color(0xFF475569),
+                modifier = Modifier.size(22.dp)
+              )
+              if (githubUpdate?.hasUpdate == true) {
+                Box(
+                  modifier = Modifier
+                    .size(10.dp)
+                    .align(Alignment.TopEnd)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEF4444))
+                )
+              }
+            }
+          }
         }
       }
 
@@ -436,6 +479,26 @@ fun DashboardScreen(
               textAlign = TextAlign.Center
             )
           }
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 2.25 GitHub Update Notification Banner (if update available)
+      // -------------------------------------------------------------
+      githubUpdate?.let { update ->
+        if (update.hasUpdate) {
+          GitHubUpdateBanner(
+            updateInfo = update,
+            onDownload = {
+              val url = update.apkDownloadUrl ?: update.releasePageUrl
+              val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+              }
+              context.startActivity(intent)
+            },
+            onDetails = { viewModel.openUpdateDialog() },
+            onDismiss = { viewModel.dismissUpdate() }
+          )
         }
       }
 
@@ -1031,6 +1094,20 @@ fun DashboardScreen(
         onConfirm = { photoPath ->
           viewModel.performAttendance(cameraAttendanceType!!, photoPath)
         }
+      )
+    }
+
+    if (showUpdateDialog && githubUpdate != null) {
+      GitHubUpdateDetailDialog(
+        updateInfo = githubUpdate!!,
+        onDismiss = { viewModel.closeUpdateDialog() }
+      )
+    }
+
+    if (showRepoSettingsDialog) {
+      GitHubRepoSettingsDialog(
+        viewModel = viewModel,
+        onDismiss = { viewModel.closeRepoSettings() }
       )
     }
   }
