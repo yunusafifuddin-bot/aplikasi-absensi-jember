@@ -199,17 +199,17 @@ jobs:
           echo "Target Commit SHA: $COMMIT_SHA"
 
           NOTES_PATH="${RUNNER_TEMP}/release_notes.md"
-          cat << NOTES_EOF > "$NOTES_PATH"
-### Debug APK Build Information
-- This is an automatically generated debug APK.
-- The APK was built by GitHub Actions.
-- GitHub Actions run number: ${RUN_NUMBER}
-- GitHub Actions run attempt: ${RUN_ATTEMPT}
-- Source commit SHA: ${COMMIT_SHA}
-- The APK is intended for testing.
-- The APK is not a Play Store production release.
-- The APK is signed only with a temporary debug keystore.
-NOTES_EOF
+          {
+            echo "### Debug APK Build Information"
+            echo "- This is an automatically generated debug APK."
+            echo "- The APK was built by GitHub Actions."
+            echo "- GitHub Actions run number: ${RUN_NUMBER}"
+            echo "- GitHub Actions run attempt: ${RUN_ATTEMPT}"
+            echo "- Source commit SHA: ${COMMIT_SHA}"
+            echo "- The APK is intended for testing."
+            echo "- The APK is not a Play Store production release."
+            echo "- The APK is signed only with a temporary debug keystore."
+          } > "$NOTES_PATH"
 
           gh release create "$RELEASE_TAG" \
             "$ASSET_PATH" \
