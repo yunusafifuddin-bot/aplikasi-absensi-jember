@@ -554,15 +554,14 @@ fun MainAppShell(
               onClick = { viewModel.selectPage(AppPage.HISTORY) }
             )
 
-            // Center Elevated Circular Green Action: KAMERA PRESENSI MASUK / PULANG
+            // Center Circular Green Action: KAMERA PRESENSI MASUK / PULANG
             Box(
               modifier = Modifier
-                .offset(y = (-14).dp)
-                .size(66.dp)
-                .shadow(8.dp, CircleShape)
+                .size(52.dp)
+                .shadow(4.dp, CircleShape)
                 .clip(CircleShape)
                 .background(Color(0xFF16A34A))
-                .border(3.dp, Color.White, CircleShape)
+                .border(2.dp, Color.White, CircleShape)
                 .clickable {
                   if (currentPage != AppPage.HOME) {
                     viewModel.selectPage(AppPage.HOME)
@@ -579,20 +578,19 @@ fun MainAppShell(
                   imageVector = Icons.Default.CameraAlt,
                   contentDescription = "Kamera Presensi",
                   tint = Color.White,
-                  modifier = Modifier.size(22.dp)
+                  modifier = Modifier.size(20.dp)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.dp))
                 Text(
                   text = when {
-                    !hasClockedIn -> "FOTO\nMASUK"
-                    !hasClockedOut -> "FOTO\nPULANG"
-                    else -> "KAMERA\nABSEN"
+                    !hasClockedIn -> "MASUK"
+                    !hasClockedOut -> "PULANG"
+                    else -> "ABSEN"
                   },
                   color = Color.White,
-                  fontSize = 8.sp,
+                  fontSize = 7.5.sp,
                   fontWeight = FontWeight.Black,
-                  textAlign = TextAlign.Center,
-                  lineHeight = 9.sp
+                  textAlign = TextAlign.Center
                 )
               }
             }

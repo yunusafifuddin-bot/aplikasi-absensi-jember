@@ -27,11 +27,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Context
@@ -122,6 +124,8 @@ fun DashboardScreen(
     }
   }
 
+  val scrollState = rememberScrollState()
+
   Box(
     modifier = modifier
       .fillMaxSize()
@@ -134,6 +138,7 @@ fun DashboardScreen(
       modifier = Modifier
         .fillMaxWidth()
         .height(340.dp)
+        .graphicsLayer { translationY = -scrollState.value.toFloat() }
     ) {
       val w = size.width
       val h = size.height
@@ -201,12 +206,12 @@ fun DashboardScreen(
       modifier = Modifier
         .fillMaxSize()
         .statusBarsPadding()
-        .verticalScroll(rememberScrollState())
+        .verticalScroll(scrollState)
         .padding(horizontal = 16.dp, vertical = 12.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       // -------------------------------------------------------------
-      // 2.1 Header Row: Avatar, Welcome, and SOP Document Button
+      // 2.1 Header Row: Avatar, Welcome, and Quick Actions
       // -------------------------------------------------------------
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -215,15 +220,16 @@ fun DashboardScreen(
       ) {
         Row(
           verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(12.dp)
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+          modifier = Modifier.weight(1f)
         ) {
           // Circular Avatar with prominent white border ring
           Box(
             modifier = Modifier
-              .size(52.dp)
+              .size(48.dp)
               .clip(CircleShape)
               .background(Color.White.copy(alpha = 0.25f))
-              .border(2.5.dp, Color.White, CircleShape)
+              .border(2.dp, Color.White, CircleShape)
               .clickable { onOpenDrawer?.invoke() ?: viewModel.selectPage(AppPage.PROFILE) }
               .testTag("nav_drawer_toggle"),
             contentAlignment = Alignment.Center
@@ -231,31 +237,33 @@ fun DashboardScreen(
             AvatarCircle(
               name = user?.nama ?: "SJG",
               photoUrl = user?.fotoUrl,
-              size = 46.dp,
-              fontSize = 15
+              size = 42.dp,
+              fontSize = 14
             )
           }
 
-          Column {
+          Column(modifier = Modifier.weight(1f, fill = false)) {
             Text(
               text = "Selamat Datang,",
-              color = Color.White.copy(alpha = 0.9f),
-              fontSize = 12.sp,
+              color = Color.White.copy(alpha = 0.85f),
+              fontSize = 11.sp,
               fontWeight = FontWeight.Medium
             )
             Text(
               text = "#SJGWarrior",
               color = Color.White,
-              fontSize = 13.sp,
+              fontSize = 12.sp,
               fontWeight = FontWeight.ExtraBold,
               letterSpacing = 0.5.sp
             )
             Text(
               text = (user?.nama ?: "YUNUS AFIFUDDIN").uppercase(),
               color = Color.White,
-              fontSize = 16.sp,
+              fontSize = 14.5.sp,
               fontWeight = FontWeight.Black,
-              letterSpacing = 0.3.sp
+              letterSpacing = 0.2.sp,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
             )
           }
         }
@@ -265,24 +273,19 @@ fun DashboardScreen(
           verticalAlignment = Alignment.CenterVertically
         ) {
           // Cloud Sync Button
-          Box(
+          Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, FormalBorder),
+            shadowElevation = 2.dp,
             modifier = Modifier
-              .height(46.dp)
-              .shadow(6.dp, RoundedCornerShape(15.dp))
-              .clip(RoundedCornerShape(15.dp))
-              .background(Color.White)
-              .border(BorderStroke(1.dp, FormalBorder), RoundedCornerShape(15.dp))
+              .size(38.dp)
               .clickable { viewModel.syncDatabase(showFeedback = true) }
-              .padding(horizontal = 10.dp),
-            contentAlignment = Alignment.Center
           ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
+            Box(contentAlignment = Alignment.Center) {
               if (isSyncing) {
                 CircularProgressIndicator(
-                  modifier = Modifier.size(15.dp),
+                  modifier = Modifier.size(16.dp),
                   strokeWidth = 2.dp,
                   color = Color(0xFF0A66C2)
                 )
@@ -291,66 +294,58 @@ fun DashboardScreen(
                   imageVector = Icons.Default.CloudSync,
                   contentDescription = "Sinkronisasi Database",
                   tint = Color(0xFF0A66C2),
-                  modifier = Modifier.size(19.dp)
+                  modifier = Modifier.size(20.dp)
                 )
               }
-              Text(
-                text = if (isSyncing) "Syncing..." else (lastSyncTime ?: "Online"),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0A66C2)
-              )
             }
           }
 
           // Top Right Document / SOP Button
-          Box(
+          Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, FormalBorder),
+            shadowElevation = 2.dp,
             modifier = Modifier
-              .size(46.dp)
-              .shadow(6.dp, RoundedCornerShape(15.dp))
-              .clip(RoundedCornerShape(15.dp))
-              .background(Color.White)
-              .border(BorderStroke(1.dp, FormalBorder), RoundedCornerShape(15.dp))
-              .clickable { viewModel.selectPage(AppPage.ANNOUNCEMENTS) },
-            contentAlignment = Alignment.Center
+              .size(38.dp)
+              .clickable { viewModel.selectPage(AppPage.ANNOUNCEMENTS) }
           ) {
-            Icon(
-              imageVector = Icons.Default.Description,
-              contentDescription = "Dokumen & SOP",
-              tint = Color(0xFF0A66C2),
-              modifier = Modifier.size(24.dp)
-            )
+            Box(contentAlignment = Alignment.Center) {
+              Icon(
+                imageVector = Icons.Default.Description,
+                contentDescription = "Dokumen & SOP",
+                tint = Color(0xFF0A66C2),
+                modifier = Modifier.size(20.dp)
+              )
+            }
           }
 
           // Top Right GitHub Sync & Update Button
-          Box(
+          Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(
+              1.dp,
+              if (githubUpdate?.hasUpdate == true) Color(0xFF0284C7) else FormalBorder
+            ),
+            shadowElevation = 2.dp,
             modifier = Modifier
-              .size(46.dp)
-              .shadow(6.dp, RoundedCornerShape(15.dp))
-              .clip(RoundedCornerShape(15.dp))
-              .background(Color.White)
-              .border(
-                BorderStroke(
-                  1.dp,
-                  if (githubUpdate?.hasUpdate == true) Color(0xFF0284C7) else FormalBorder
-                ),
-                RoundedCornerShape(15.dp)
-              )
-              .clickable { viewModel.openRepoSettings() },
-            contentAlignment = Alignment.Center
+              .size(38.dp)
+              .clickable { viewModel.openRepoSettings() }
           ) {
-            Box {
+            Box(contentAlignment = Alignment.Center) {
               Icon(
                 imageVector = Icons.Default.SyncAlt,
                 contentDescription = "Pembaruan GitHub",
                 tint = if (githubUpdate?.hasUpdate == true) Color(0xFF0284C7) else Color(0xFF475569),
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
               )
               if (githubUpdate?.hasUpdate == true) {
                 Box(
                   modifier = Modifier
-                    .size(10.dp)
+                    .size(8.dp)
                     .align(Alignment.TopEnd)
+                    .padding(1.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFEF4444))
                 )
@@ -676,149 +671,65 @@ fun DashboardScreen(
       }
 
       // -------------------------------------------------------------
-      // 2.6 Bento Hero Card: Presensi Hari Ini
+      // 2.6 Bento Presensi Hari Ini (Pusat Absensi Terpadu)
       // -------------------------------------------------------------
       Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-      ) {
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .background(BentoHeroGradient)
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Column(modifier = Modifier.weight(1f)) {
-              Text(
-                text = "PRESENSI HARI INI",
-                color = Color(0xFFE0E7FF),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp
-              )
-              Spacer(modifier = Modifier.height(4.dp))
-              Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                  text = currentTimeText.ifEmpty { "08:00" },
-                  fontSize = 30.sp,
-                  fontWeight = FontWeight.Black,
-                  color = Color.White
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                  text = amPmText.ifEmpty { "AM" },
-                  fontSize = 15.sp,
-                  fontWeight = FontWeight.Light,
-                  color = Color.White.copy(alpha = 0.8f),
-                  modifier = Modifier.padding(bottom = 3.dp)
-                )
-              }
-              Spacer(modifier = Modifier.height(8.dp))
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                Surface(
-                  color = Color.White.copy(alpha = 0.2f),
-                  shape = RoundedCornerShape(999.dp),
-                  border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
-                ) {
-                  Text(
-                    text = (todayAttendance?.status ?: if (hasClockedIn) "ON TIME" else "BELUM ABSEN").uppercase(),
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                  )
-                }
-                Text(
-                  text = "Shift: ${userShift?.namaShift ?: "Pagi"} (${userShift?.jamMasuk ?: "08:00"} - ${userShift?.jamPulang ?: "17:00"})",
-                  color = Color.White.copy(alpha = 0.85f),
-                  fontSize = 11.sp
-                )
-              }
-            }
-
-            // Check-in Action Squircle with Camera Icon
-            Box(
-              modifier = Modifier
-                .size(66.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(Color.White.copy(alpha = 0.22f))
-                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.40f)), RoundedCornerShape(22.dp))
-                .clickable {
-                  viewModel.openCameraAttendance()
-                },
-              contentAlignment = Alignment.Center
-            ) {
-              Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-              ) {
-                Icon(
-                  imageVector = Icons.Default.CameraAlt,
-                  contentDescription = "Kamera Presensi",
-                  tint = Color.White,
-                  modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                  text = when {
-                    !hasClockedIn -> "FOTO MASUK"
-                    !hasClockedOut -> "FOTO PULANG"
-                    else -> "KAMERA"
-                  },
-                  color = Color.White,
-                  fontSize = 8.sp,
-                  fontWeight = FontWeight.Black,
-                  letterSpacing = 0.5.sp,
-                  textAlign = TextAlign.Center
-                )
-              }
-            }
-          }
-        }
-      }
-
-      // -------------------------------------------------------------
-      // 2.7 Bento Section: Lakukan Absensi Masuk / Pulang (Warna Hijau)
-      // -------------------------------------------------------------
-      Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = BentoCardWhite),
         border = BorderStroke(1.dp, BentoBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
       ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
           Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
           ) {
             Column {
-              Text(
-                text = "Presensi Hari Ini",
-                fontWeight = FontWeight.Black,
-                fontSize = 18.sp,
-                color = BentoSlate800
-              )
+              Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                  text = currentTimeText.ifEmpty { "08:00" },
+                  fontWeight = FontWeight.Black,
+                  fontSize = 24.sp,
+                  color = BentoSlate800
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = amPmText.ifEmpty { "AM" },
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = BentoSlate400,
+                  modifier = Modifier.padding(bottom = 2.dp)
+                )
+              }
               Text(
                 text = todayIndoDate,
-                fontSize = 12.sp,
-                color = BentoSlate400
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = BentoSlate500
               )
             }
-            StatusBadge(status = todayAttendance?.status ?: "Belum Absen")
+
+            Column(
+              horizontalAlignment = Alignment.End,
+              verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+              StatusBadge(status = todayAttendance?.status ?: "Belum Absen")
+              Surface(
+                color = Color(0xFFF1F5F9),
+                shape = RoundedCornerShape(999.dp),
+                border = BorderStroke(1.dp, BentoBorder)
+              ) {
+                Text(
+                  text = "Shift: ${userShift?.namaShift ?: "Pagi"} (${userShift?.jamMasuk ?: "08:00"}-${userShift?.jamPulang ?: "17:00"})",
+                  color = BentoSlate700,
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+              }
+            }
           }
 
           Spacer(modifier = Modifier.height(16.dp))
@@ -1114,7 +1025,7 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun QuickActionItem(
+private fun RowScope.QuickActionItem(
   icon: ImageVector,
   label: String,
   badgeBg: Color,
@@ -1124,13 +1035,14 @@ private fun QuickActionItem(
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
     modifier = Modifier
+      .weight(1f)
       .clickable(onClick = onClick)
-      .width(62.dp)
+      .padding(horizontal = 2.dp)
   ) {
     Box(
       modifier = Modifier
-        .size(48.dp)
-        .shadow(3.dp, CircleShape)
+        .size(46.dp)
+        .shadow(2.dp, CircleShape)
         .clip(CircleShape)
         .background(badgeBg)
         .border(1.dp, Color.White, CircleShape),
@@ -1138,19 +1050,21 @@ private fun QuickActionItem(
     ) {
       Icon(
         imageVector = icon,
-        contentDescription = label,
+        contentDescription = label.replace("\n", " "),
         tint = iconTint,
-        modifier = Modifier.size(24.dp)
+        modifier = Modifier.size(22.dp)
       )
     }
     Spacer(modifier = Modifier.height(6.dp))
     Text(
       text = label,
-      fontSize = 10.5.sp,
+      fontSize = 10.sp,
       fontWeight = FontWeight.Bold,
       color = BentoSlate800,
       textAlign = TextAlign.Center,
-      lineHeight = 13.sp
+      lineHeight = 12.sp,
+      maxLines = 2,
+      overflow = TextOverflow.Ellipsis
     )
   }
 }
