@@ -1,0 +1,8 @@
+{
+  "name": "Remix Sukses Jaya HRIS",
+  "description": "Sistem HR \u0026 Presensi Enterprise Sukses Jaya Jember dengan presensi selfie GPS, kasbon, cuti, lembur, shift kerja, payroll dan slip gaji.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
