@@ -224,46 +224,51 @@ jobs:
 
           gh release create "$RELEASE_TAG" \
             "$ASSET_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TITLE" \
             --notes-file "$NOTES_PATH" \
             --target "$COMMIT_SHA" \
             --latest
 
       - name: Report APK download result
+        id: report_result
         if: always() && steps.prepare_asset.conclusion == 'success'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RUN_NUMBER: ${{ github.run_number }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
+          set +e
           RELEASE_TAG="debug-apk-build-${RUN_NUMBER}-${RUN_ATTEMPT}"
+          RELEASE_TITLE="Debug APK Build #${RUN_NUMBER}"
           ASSET_FILENAME="${{ steps.prepare_asset.outputs.asset_filename }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}"
+          DIRECT_DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/${ASSET_FILENAME}"
 
           if [ "${{ steps.publish_release.outcome }}" = "success" ]; then
             echo "=== GitHub Release publishing succeeded ==="
-            RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq '.url')
-            RELEASE_TITLE=$(gh release view "$RELEASE_TAG" --json title --jq '.title')
-            RELEASE_TAG_CONFIRMED=$(gh release view "$RELEASE_TAG" --json tagName --jq '.tagName')
-
-            echo "Confirmed Release Tag: $RELEASE_TAG_CONFIRMED"
+            echo "Release Tag: $RELEASE_TAG"
             echo "Release Title: $RELEASE_TITLE"
-            echo "Direct GitHub Release Page URL: $RELEASE_URL"
+            echo "Release Page URL: $RELEASE_URL"
+            echo "Direct APK Download URL: $DIRECT_DOWNLOAD_URL"
             echo "APK Asset Filename: $ASSET_FILENAME"
 
             {
               echo "## 🚀 Debug APK Build & Release Summary"
               echo ""
               echo "- **Release Title**: $RELEASE_TITLE"
-              echo "- **Release Tag**: \`$RELEASE_TAG_CONFIRMED\`"
+              echo "- **Release Tag**: \`$RELEASE_TAG\`"
               echo "- **Release Page URL**: [$RELEASE_URL]($RELEASE_URL)"
-              echo "- **Direct APK Asset Filename**: \`$ASSET_FILENAME\`"
+              echo "- **Direct APK Asset**: [$ASSET_FILENAME]($DIRECT_DOWNLOAD_URL)"
               echo ""
-              echo "The debug APK can be downloaded directly on your phone from the **Assets** section of the [GitHub Release page]($RELEASE_URL)."
+              echo "The debug APK can be downloaded directly to your phone from the [GitHub Release page]($RELEASE_URL) or using the [direct APK link]($DIRECT_DOWNLOAD_URL)."
               echo ""
-              echo "> **Actions Artifact Backup**: The normal Actions artifact named \`app-debug-apk\` is also available on this workflow run page."
+              echo "> **Actions Artifact Backup**: The standard Actions artifact named \`app-debug-apk\` is also available on this workflow run page."
             } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::warning::GitHub Release publishing failed, but the debug APK build succeeded."
+            echo "::warning::GitHub Release publishing did not complete, but the debug APK build succeeded."
             echo "APK build succeeded: app/build/outputs/apk/debug/app-debug.apk"
             echo "The Actions artifact named app-debug-apk remains available."
 
@@ -276,3 +281,4 @@ jobs:
               echo "The compiled debug APK is preserved and available for download under the workflow run's **Artifacts** section as **\`app-debug-apk\`**."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+          exit 0
