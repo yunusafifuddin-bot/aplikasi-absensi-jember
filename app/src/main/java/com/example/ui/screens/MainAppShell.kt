@@ -45,6 +45,8 @@ fun MainAppShell(
   val gpsState by viewModel.gpsState.collectAsState()
   val employees by viewModel.allEmployees.collectAsState()
   val attendances by viewModel.allAttendances.collectAsState()
+  val isSyncing by viewModel.isSyncing.collectAsState()
+  val lastSyncTime by viewModel.lastSyncTime.collectAsState()
 
   val todayDate = remember {
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -311,6 +313,17 @@ fun MainAppShell(
           Spacer(modifier = Modifier.height(8.dp))
 
           SidebarNavItem(
+            title = if (isSyncing) "Sinkronisasi..." else "Sinkronkan Database",
+            icon = Icons.Default.CloudSync,
+            selected = false,
+            textColor = SjPrimary,
+            onClick = {
+              viewModel.syncDatabase(showFeedback = true)
+              scope.launch { drawerState.close() }
+            }
+          )
+
+          SidebarNavItem(
             title = "Keluar Akun",
             icon = Icons.Default.Logout,
             selected = false,
@@ -353,6 +366,43 @@ fun MainAppShell(
               }
             },
             actions = {
+              // Cloud Sync Status button
+              Surface(
+                color = if (isSyncing) Color(0xFFEFF6FF) else Color(0xFFF1F5F9),
+                shape = RoundedCornerShape(99.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSyncing) SjPrimary else FormalBorder),
+                modifier = Modifier
+                  .clickable { viewModel.syncDatabase(showFeedback = true) }
+                  .padding(end = 6.dp)
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                  if (isSyncing) {
+                    CircularProgressIndicator(
+                      modifier = Modifier.size(12.dp),
+                      strokeWidth = 2.dp,
+                      color = SjPrimary
+                    )
+                  } else {
+                    Icon(
+                      imageVector = Icons.Default.CloudSync,
+                      contentDescription = "Sinkronisasi Database",
+                      tint = SjPrimary,
+                      modifier = Modifier.size(14.dp)
+                    )
+                  }
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text(
+                    text = if (isSyncing) "Syncing..." else (lastSyncTime ?: "Online"),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = BentoSlate800
+                  )
+                }
+              }
+
               // Geofence status pill in TopAppBar
               Surface(
                 color = if (gpsState.isWithinGeofence) Color(0xFFDCFCE7) else Color(0xFFFEE2E2),

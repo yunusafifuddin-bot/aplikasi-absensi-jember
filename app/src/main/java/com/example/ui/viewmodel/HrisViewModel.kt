@@ -62,6 +62,12 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
   private val _cameraAttendanceType = MutableStateFlow<String?>(null)
   val cameraAttendanceType: StateFlow<String?> = _cameraAttendanceType.asStateFlow()
 
+  private val _isSyncing = MutableStateFlow(false)
+  val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+  private val _lastSyncTime = MutableStateFlow<String?>(null)
+  val lastSyncTime: StateFlow<String?> = _lastSyncTime.asStateFlow()
+
   // Selected filters
   val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
   private val _selectedMonth = MutableStateFlow(currentMonth)
@@ -83,6 +89,31 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
       val defaultEmp = database.employeeDao().getEmployeeByNik("SJ001")
       _currentUser.value = defaultEmp
       updateGpsDistance()
+      // Initial background sync with Google Apps Script
+      syncDatabase(showFeedback = false)
+    }
+  }
+
+  fun syncDatabase(showFeedback: Boolean = true) {
+    if (_isSyncing.value) return
+    viewModelScope.launch {
+      _isSyncing.value = true
+      val res = repository.syncWithRemote()
+      _isSyncing.value = false
+      if (res.isSuccess) {
+        val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        _lastSyncTime.value = timeStr
+        val curNik = _currentUser.value?.nik
+        if (curNik != null) {
+          val updatedEmp = database.employeeDao().getEmployeeByNik(curNik)
+          if (updatedEmp != null) _currentUser.value = updatedEmp
+        }
+        if (showFeedback) {
+          emitMessage("Sinkronisasi database Google Sheets berhasil ($timeStr)")
+        }
+      } else if (showFeedback) {
+        emitMessage("Gagal sinkron database: ${res.exceptionOrNull()?.message ?: "Periksa koneksi"}")
+      }
     }
   }
 

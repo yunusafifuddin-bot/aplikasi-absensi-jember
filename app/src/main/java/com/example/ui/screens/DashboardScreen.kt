@@ -66,6 +66,8 @@ fun DashboardScreen(
   val gpsState by viewModel.gpsState.collectAsState()
   val announcements by viewModel.allAnnouncements.collectAsState()
   val cameraAttendanceType by viewModel.cameraAttendanceType.collectAsState()
+  val isSyncing by viewModel.isSyncing.collectAsState()
+  val lastSyncTime by viewModel.lastSyncTime.collectAsState()
 
   val todayDate = remember {
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -251,23 +253,67 @@ fun DashboardScreen(
           }
         }
 
-        // Top Right Document / SOP Button
-        Box(
-          modifier = Modifier
-            .size(46.dp)
-            .shadow(6.dp, RoundedCornerShape(15.dp))
-            .clip(RoundedCornerShape(15.dp))
-            .background(Color.White)
-            .border(BorderStroke(1.dp, FormalBorder), RoundedCornerShape(15.dp))
-            .clickable { viewModel.selectPage(AppPage.ANNOUNCEMENTS) },
-          contentAlignment = Alignment.Center
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.CenterVertically
         ) {
-          Icon(
-            imageVector = Icons.Default.Description,
-            contentDescription = "Dokumen & SOP",
-            tint = Color(0xFF0A66C2),
-            modifier = Modifier.size(24.dp)
-          )
+          // Cloud Sync Button
+          Box(
+            modifier = Modifier
+              .height(46.dp)
+              .shadow(6.dp, RoundedCornerShape(15.dp))
+              .clip(RoundedCornerShape(15.dp))
+              .background(Color.White)
+              .border(BorderStroke(1.dp, FormalBorder), RoundedCornerShape(15.dp))
+              .clickable { viewModel.syncDatabase(showFeedback = true) }
+              .padding(horizontal = 10.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+              if (isSyncing) {
+                CircularProgressIndicator(
+                  modifier = Modifier.size(15.dp),
+                  strokeWidth = 2.dp,
+                  color = Color(0xFF0A66C2)
+                )
+              } else {
+                Icon(
+                  imageVector = Icons.Default.CloudSync,
+                  contentDescription = "Sinkronisasi Database",
+                  tint = Color(0xFF0A66C2),
+                  modifier = Modifier.size(19.dp)
+                )
+              }
+              Text(
+                text = if (isSyncing) "Syncing..." else (lastSyncTime ?: "Online"),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF0A66C2)
+              )
+            }
+          }
+
+          // Top Right Document / SOP Button
+          Box(
+            modifier = Modifier
+              .size(46.dp)
+              .shadow(6.dp, RoundedCornerShape(15.dp))
+              .clip(RoundedCornerShape(15.dp))
+              .background(Color.White)
+              .border(BorderStroke(1.dp, FormalBorder), RoundedCornerShape(15.dp))
+              .clickable { viewModel.selectPage(AppPage.ANNOUNCEMENTS) },
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              imageVector = Icons.Default.Description,
+              contentDescription = "Dokumen & SOP",
+              tint = Color(0xFF0A66C2),
+              modifier = Modifier.size(24.dp)
+            )
+          }
         }
       }
 

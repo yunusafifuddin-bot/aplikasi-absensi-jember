@@ -1,12 +1,22 @@
 package com.example.data.repository
 
+import android.util.Log
 import com.example.data.local.*
+import com.example.data.remote.GasApiClient
+import com.example.data.remote.GasSyncResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
 class HrisRepository(private val db: AppDatabase) {
+
+  private val coroutineScope = CoroutineScope(Dispatchers.IO)
+  private val tag = "HrisRepository"
 
   val allEmployees: Flow<List<EmployeeEntity>> = db.employeeDao().getAllEmployees()
   val allShifts: Flow<List<ShiftEntity>> = db.shiftDao().getAllShifts()
@@ -39,7 +49,61 @@ class HrisRepository(private val db: AppDatabase) {
   fun getPayrollsByPeriode(periode: String): Flow<List<PayrollEntity>> =
     db.payrollDao().getPayrollsByPeriode(periode)
 
+  /**
+   * Sync all tables from Google Apps Script / Google Sheets database into Room.
+   */
+  suspend fun syncWithRemote(): Result<GasSyncResult> = withContext(Dispatchers.IO) {
+    try {
+      val remoteData = GasApiClient.fetchSyncData()
+      if (remoteData != null) {
+        if (remoteData.employees.isNotEmpty()) {
+          db.employeeDao().insertAll(remoteData.employees)
+        }
+        if (remoteData.shifts.isNotEmpty()) {
+          db.shiftDao().insertAll(remoteData.shifts)
+        }
+        if (remoteData.attendances.isNotEmpty()) {
+          db.attendanceDao().insertAll(remoteData.attendances)
+        }
+        if (remoteData.kasbons.isNotEmpty()) {
+          db.kasbonDao().insertAll(remoteData.kasbons)
+        }
+        if (remoteData.cutis.isNotEmpty()) {
+          db.cutiDao().insertAll(remoteData.cutis)
+        }
+        if (remoteData.lemburs.isNotEmpty()) {
+          db.lemburDao().insertAll(remoteData.lemburs)
+        }
+        if (remoteData.payrolls.isNotEmpty()) {
+          db.payrollDao().insertAll(remoteData.payrolls)
+        }
+        if (remoteData.announcements.isNotEmpty()) {
+          db.announcementDao().insertAll(remoteData.announcements)
+        }
+        Log.d(tag, "Successfully synced database from Google Apps Script")
+        Result.success(remoteData)
+      } else {
+        Result.failure(Exception("Tidak dapat terhubung ke server Google Sheets."))
+      }
+    } catch (e: Exception) {
+      Log.e(tag, "Failed to sync with remote database", e)
+      Result.failure(e)
+    }
+  }
+
   suspend fun login(nik: String, pass: String): EmployeeEntity? {
+    // 1. Try online authentication with Google Apps Script
+    val remoteEmp = try {
+      GasApiClient.login(nik, pass)
+    } catch (e: Exception) {
+      null
+    }
+    if (remoteEmp != null) {
+      db.employeeDao().insertOrUpdate(remoteEmp)
+      return remoteEmp
+    }
+
+    // 2. Fallback to local Room database (offline support)
     val emp = db.employeeDao().getEmployeeByNik(nik) ?: return null
     return if (emp.password == pass) emp else null
   }
@@ -49,7 +113,9 @@ class HrisRepository(private val db: AppDatabase) {
     date: String,
     time: String,
     distanceMeters: Int,
-    photoUrl: String? = null
+    photoUrl: String? = null,
+    lat: Double = -8.1724,
+    lng: Double = 113.6995
   ): Result<AttendanceEntity> {
     val shift = db.employeeDao().getEmployeeByNik(nik)?.let {
       db.shiftDao().getShiftById(it.shiftId)
@@ -79,9 +145,32 @@ class HrisRepository(private val db: AppDatabase) {
       jarakMeter = distanceMeters,
       fotoMasukUrl = photoUrl ?: existing?.fotoMasukUrl,
       fotoPulangUrl = existing?.fotoPulangUrl,
+      lat = lat,
+      lng = lng,
       durasiJam = existing?.durasiJam ?: 8.0
     )
     db.attendanceDao().insertOrUpdate(updated)
+
+    // Push asynchronously to Google Apps Script
+    coroutineScope.launch {
+      try {
+        val remoteResult = GasApiClient.clockIn(
+          nik = nik,
+          date = date,
+          time = time,
+          distanceMeters = distanceMeters,
+          photoUrl = photoUrl,
+          lat = lat,
+          lng = lng
+        )
+        if (remoteResult != null) {
+          db.attendanceDao().insertOrUpdate(remoteResult)
+        }
+      } catch (e: Exception) {
+        Log.e(tag, "Remote clockIn sync error", e)
+      }
+    }
+
     return Result.success(updated)
   }
 
@@ -90,7 +179,9 @@ class HrisRepository(private val db: AppDatabase) {
     date: String,
     time: String,
     distanceMeters: Int,
-    photoUrl: String? = null
+    photoUrl: String? = null,
+    lat: Double = -8.1724,
+    lng: Double = 113.6995
   ): Result<AttendanceEntity> {
     val existing = db.attendanceDao().getAttendance(nik, date)
       ?: return Result.failure(Exception("Belum melakukan absen masuk hari ini."))
@@ -109,9 +200,32 @@ class HrisRepository(private val db: AppDatabase) {
       jamPulang = time,
       fotoPulangUrl = photoUrl ?: existing.fotoPulangUrl,
       durasiJam = durationHours,
-      jarakMeter = distanceMeters
+      jarakMeter = distanceMeters,
+      lat = lat,
+      lng = lng
     )
     db.attendanceDao().insertOrUpdate(updated)
+
+    // Push asynchronously to Google Apps Script
+    coroutineScope.launch {
+      try {
+        val remoteResult = GasApiClient.clockOut(
+          nik = nik,
+          date = date,
+          time = time,
+          distanceMeters = distanceMeters,
+          photoUrl = photoUrl,
+          lat = lat,
+          lng = lng
+        )
+        if (remoteResult != null) {
+          db.attendanceDao().insertOrUpdate(remoteResult)
+        }
+      } catch (e: Exception) {
+        Log.e(tag, "Remote clockOut sync error", e)
+      }
+    }
+
     return Result.success(updated)
   }
 
@@ -128,6 +242,17 @@ class HrisRepository(private val db: AppDatabase) {
       statusPersetujuan = "Pending"
     )
     db.kasbonDao().insert(entity)
+
+    coroutineScope.launch {
+      try {
+        val remote = GasApiClient.submitKasbon(nik, nama, amount, reason)
+        if (remote != null) {
+          db.kasbonDao().insert(remote)
+        }
+      } catch (e: Exception) {
+        Log.e(tag, "Remote submitKasbon sync error", e)
+      }
+    }
   }
 
   suspend fun submitCuti(
@@ -150,6 +275,17 @@ class HrisRepository(private val db: AppDatabase) {
       status = "Pending"
     )
     db.cutiDao().insert(entity)
+
+    coroutineScope.launch {
+      try {
+        val remote = GasApiClient.submitCuti(nik, nama, jenis, startDate, endDate, reason)
+        if (remote != null) {
+          db.cutiDao().insert(remote)
+        }
+      } catch (e: Exception) {
+        Log.e(tag, "Remote submitCuti sync error", e)
+      }
+    }
   }
 
   suspend fun submitLembur(
@@ -182,39 +318,106 @@ class HrisRepository(private val db: AppDatabase) {
       statusPersetujuan = "Pending"
     )
     db.lemburDao().insert(entity)
+
+    coroutineScope.launch {
+      try {
+        val remote = GasApiClient.submitLembur(nik, nama, date, startTime, endTime, desc, durasi)
+        if (remote != null) {
+          db.lemburDao().insert(remote)
+        }
+      } catch (e: Exception) {
+        Log.e(tag, "Remote submitLembur sync error", e)
+      }
+    }
   }
 
   suspend fun updateKasbonStatus(id: String, status: String) {
     db.kasbonDao().updateStatus(id, status)
+    coroutineScope.launch {
+      try {
+        GasApiClient.updateKasbonStatus(id, status)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote updateKasbonStatus error", e)
+      }
+    }
   }
 
   suspend fun updateCutiStatus(id: String, status: String) {
     db.cutiDao().updateStatus(id, status)
+    coroutineScope.launch {
+      try {
+        GasApiClient.updateCutiStatus(id, status)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote updateCutiStatus error", e)
+      }
+    }
   }
 
   suspend fun updateLemburStatus(id: String, status: String) {
     db.lemburDao().updateStatus(id, status)
+    coroutineScope.launch {
+      try {
+        GasApiClient.updateLemburStatus(id, status)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote updateLemburStatus error", e)
+      }
+    }
   }
 
   suspend fun saveEmployee(employee: EmployeeEntity) {
     db.employeeDao().insertOrUpdate(employee)
+    coroutineScope.launch {
+      try {
+        GasApiClient.saveEmployee(employee)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote saveEmployee error", e)
+      }
+    }
   }
 
   suspend fun deleteEmployee(nik: String) {
     db.employeeDao().deleteByNik(nik)
+    coroutineScope.launch {
+      try {
+        GasApiClient.deleteEmployee(nik)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote deleteEmployee error", e)
+      }
+    }
   }
 
   suspend fun saveShift(shift: ShiftEntity) {
     db.shiftDao().insertOrUpdate(shift)
+    coroutineScope.launch {
+      try {
+        GasApiClient.saveShift(shift)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote saveShift error", e)
+      }
+    }
   }
 
   suspend fun deleteShift(shiftId: String) {
     db.shiftDao().deleteById(shiftId)
+    coroutineScope.launch {
+      try {
+        GasApiClient.deleteShift(shiftId)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote deleteShift error", e)
+      }
+    }
   }
 
   suspend fun markPayrollPaid(id: String) {
     val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     db.payrollDao().updateStatus(id, "Paid", sdf.format(Date()))
+    coroutineScope.launch {
+      try {
+        GasApiClient.markPayrollPaid(id)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote markPayrollPaid error", e)
+      }
+    }
   }
 
   suspend fun generatePayroll(periode: String, targetNik: String = "") {
@@ -229,19 +432,17 @@ class HrisRepository(private val db: AppDatabase) {
 
     for (emp in employees) {
       val payrollId = "PR-$periode-${emp.nik}"
-      // calculate approved kasbon outstanding
       val kasbonDeduction = allKasbons
         .filter { it.nik == emp.nik && it.statusPersetujuan == "Approved" }
         .sumOf { it.jumlah }
         .coerceAtMost(emp.limitKasbon)
 
-      // calculate approved overtime pay (e.g. 50,000 per hour)
       val otHours = allLemburs
         .filter { it.nik == emp.nik && it.statusPersetujuan == "Approved" && it.tanggal.startsWith(periode) }
         .sumOf { it.durasiJam }
       val otPay = (otHours * 50000).toLong()
 
-      val potonganLain = 120000L // BPJS Kesehatan & Ketenagakerjaan contribution
+      val potonganLain = 120000L
       val netSalary = (emp.gajiPokok + emp.tunjangan + otPay - kasbonDeduction - potonganLain).coerceAtLeast(0)
 
       val payroll = PayrollEntity(
@@ -260,22 +461,49 @@ class HrisRepository(private val db: AppDatabase) {
       )
       db.payrollDao().insert(payroll)
     }
+
+    coroutineScope.launch {
+      try {
+        GasApiClient.generatePayroll(periode, targetNik)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote generatePayroll error", e)
+      }
+    }
   }
 
   suspend fun addAnnouncement(judul: String, isi: String, kategori: String) {
     val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    db.announcementDao().insert(
-      AnnouncementEntity(
-        judul = judul,
-        isi = isi,
-        kategori = kategori,
-        tanggal = sdf.format(Date())
-      )
+    val localEntity = AnnouncementEntity(
+      judul = judul,
+      isi = isi,
+      kategori = kategori,
+      tanggal = sdf.format(Date())
     )
+    db.announcementDao().insert(localEntity)
+
+    coroutineScope.launch {
+      try {
+        val remote = GasApiClient.addAnnouncement(judul, isi, kategori)
+        if (remote != null) {
+          db.announcementDao().insert(remote)
+        }
+      } catch (e: Exception) {
+        Log.e(tag, "Remote addAnnouncement error", e)
+      }
+    }
   }
 
   suspend fun updateEmployeePhoto(nik: String, photoUrl: String) {
     val emp = db.employeeDao().getEmployeeByNik(nik) ?: return
-    db.employeeDao().insertOrUpdate(emp.copy(fotoUrl = photoUrl))
+    val updated = emp.copy(fotoUrl = photoUrl)
+    db.employeeDao().insertOrUpdate(updated)
+    coroutineScope.launch {
+      try {
+        GasApiClient.saveEmployee(updated)
+      } catch (e: Exception) {
+        Log.e(tag, "Remote updateEmployeePhoto error", e)
+      }
+    }
   }
 }
+
