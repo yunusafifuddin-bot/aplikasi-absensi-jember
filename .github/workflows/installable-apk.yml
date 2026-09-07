@@ -1,0 +1,107 @@
+name: Build Installable APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GRADLE_VERSION: '9.3.1'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      # Keep one signing certificate between workflow runs. This prevents
+      # Android from rejecting an update because every CI run used a new key.
+      # This is an INTERNAL/TEST signing key, not a Play Store production key.
+      - name: Restore stable internal signing key
+        id: signing-cache
+        uses: actions/cache@v4
+        with:
+          path: debug.keystore
+          key: absensi-jember-internal-debug-keystore-v1
+
+      - name: Create stable internal signing key on first run
+        if: steps.signing-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore ./debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000
+          test -s ./debug.keystore
+
+      - name: Verify signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s ./debug.keystore
+          keytool -list -v -keystore ./debug.keystore -storepass android -alias androiddebugkey >/dev/null
+          echo "Stable internal signing key is ready."
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:clean :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify APK is installable and correctly signed
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          SDK_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
+          "$SDK_TOOLS/apksigner" verify --verbose "$APK"
+          "$SDK_TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt
+          echo "APK SHA256:"
+          sha256sum "$APK"
+
+      - name: Upload installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aplikasi-absensi-jember-installable-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Publish installable APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          TAG="installable-apk-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          NAME="Installable APK #${GITHUB_RUN_NUMBER}"
+          NOTES="Internal/test APK. The signing certificate is kept stable by GitHub Actions cache so later builds can update the installed app. For production distribution, replace this with a private release keystore stored in GitHub Secrets."
+          gh release create "$TAG" "$APK" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$NAME" \
+            --notes "$NOTES" \
+            --target "$GITHUB_SHA" \
+            --latest
