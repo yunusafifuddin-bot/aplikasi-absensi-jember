@@ -16,8 +16,8 @@ android {
   defaultConfig {
     applicationId = "com.aistudio.suksesjaya.tnrpmu"
     minSdk = 24
-    // Android 14 = API 34. Keep compile SDK newer for tooling, but target Android 14 behavior.
-    targetSdk = 34
+    // Kembali ke target SDK sebelum perubahan Android 14.
+    targetSdk = 35
     versionCode = 2
     versionName = "2.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
