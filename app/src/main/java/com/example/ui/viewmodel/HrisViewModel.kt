@@ -36,7 +36,7 @@ data class GpsLocationState(
   val lng: Double = 113.69948,
   val accuracyMeters: Float = 12f,
   val distanceToOfficeMeters: Int = 18,
-  val isWithinGeofence: Boolean = true, // <= 100m
+  val isWithinGeofence: Boolean = true,
   val officeLat: Double = -8.1724,
   val officeLng: Double = 113.6995,
   val geofenceRadiusMeters: Int = 100
@@ -71,7 +71,6 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
   private val _lastSyncTime = MutableStateFlow<String?>(null)
   val lastSyncTime: StateFlow<String?> = _lastSyncTime.asStateFlow()
 
-  // GitHub Update Tracking
   private val _githubRepo = MutableStateFlow(GitHubUpdateService.getConfiguredRepo(application))
   val githubRepo: StateFlow<String> = _githubRepo.asStateFlow()
 
@@ -87,7 +86,6 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
   private val _showRepoSettingsDialog = MutableStateFlow(false)
   val showRepoSettingsDialog: StateFlow<Boolean> = _showRepoSettingsDialog.asStateFlow()
 
-  // Selected filters
   val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
   private val _selectedMonth = MutableStateFlow(currentMonth)
   val selectedMonth: StateFlow<String> = _selectedMonth.asStateFlow()
@@ -102,17 +100,9 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
   val allPayrolls = repository.allPayrolls.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   init {
-    viewModelScope.launch {
-      DatabaseInitializer.preseedIfEmpty(database)
-      // Auto login with default employee for preview ease, or user can log out
-      val defaultEmp = database.employeeDao().getEmployeeByNik("SJ001")
-      _currentUser.value = defaultEmp
-      updateGpsDistance()
-      // Initial background sync with Google Apps Script
-      syncDatabase(showFeedback = false)
-      // Check for GitHub updates on startup
-      checkAppUpdate(userInitiated = false)
-    }
+    // Do not auto-login, seed demo users, or force a network request while the
+    // login screen is starting. The server is authoritative and login is explicit.
+    updateGpsDistance()
   }
 
   fun checkAppUpdate(userInitiated: Boolean = false) {
@@ -124,9 +114,7 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
         val info = GitHubUpdateService.checkForUpdates(app, _githubRepo.value)
         _githubUpdate.value = info
         if (info != null && info.hasUpdate) {
-          // Record notified
           GitHubUpdateService.recordNotified(app, info.latestVersion, info.latestCommitSha)
-          // Post Android system notification
           NotificationHelper.showUpdateNotification(
             context = app,
             title = "Pembaruan Tersedia: ${info.latestVersion}",
@@ -141,9 +129,7 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
           emitMessage("Aplikasi sudah versi terbaru. Tidak ada perubahan file di GitHub.")
         }
       } catch (e: Exception) {
-        if (userInitiated) {
-          emitMessage("Gagal memeriksa pembaruan: ${e.message}")
-        }
+        if (userInitiated) emitMessage("Gagal memeriksa pembaruan: ${e.message ?: "koneksi gagal"}")
       } finally {
         _isCheckingUpdate.value = false
       }
@@ -158,26 +144,11 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
     checkAppUpdate(userInitiated = true)
   }
 
-  fun dismissUpdate() {
-    _githubUpdate.value = null
-    _showUpdateDialog.value = false
-  }
-
-  fun openUpdateDialog() {
-    _showUpdateDialog.value = true
-  }
-
-  fun closeUpdateDialog() {
-    _showUpdateDialog.value = false
-  }
-
-  fun openRepoSettings() {
-    _showRepoSettingsDialog.value = true
-  }
-
-  fun closeRepoSettings() {
-    _showRepoSettingsDialog.value = false
-  }
+  fun dismissUpdate() { _githubUpdate.value = null; _showUpdateDialog.value = false }
+  fun openUpdateDialog() { _showUpdateDialog.value = true }
+  fun closeUpdateDialog() { _showUpdateDialog.value = false }
+  fun openRepoSettings() { _showRepoSettingsDialog.value = true }
+  fun closeRepoSettings() { _showRepoSettingsDialog.value = false }
 
   fun syncDatabase(showFeedback: Boolean = true) {
     if (_isSyncing.value) return
@@ -193,40 +164,39 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
           val updatedEmp = database.employeeDao().getEmployeeByNik(curNik)
           if (updatedEmp != null) _currentUser.value = updatedEmp
         }
-        if (showFeedback) {
-          emitMessage("Sinkronisasi database Google Sheets berhasil ($timeStr)")
-        }
+        if (showFeedback) emitMessage("Sinkronisasi database Google Sheets berhasil ($timeStr)")
       } else if (showFeedback) {
         emitMessage("Gagal sinkron database: ${res.exceptionOrNull()?.message ?: "Periksa koneksi"}")
       }
     }
   }
 
-  fun selectPage(page: AppPage) {
-    _currentPage.value = page
-  }
-
-  fun setSelectedMonth(month: String) {
-    _selectedMonth.value = month
-  }
+  fun selectPage(page: AppPage) { _currentPage.value = page }
+  fun setSelectedMonth(month: String) { _selectedMonth.value = month }
 
   fun login(nik: String, pass: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    val cleanNik = nik.trim()
+    val cleanPass = pass.trim()
+    if (cleanNik.isBlank() || cleanPass.isBlank()) {
+      onError("NIK dan password wajib diisi.")
+      return
+    }
     viewModelScope.launch {
-      val emp = repository.login(nik.trim(), pass)
+      val emp = repository.login(cleanNik, cleanPass)
       if (emp != null) {
         _currentUser.value = emp
         _currentPage.value = AppPage.HOME
         onSuccess()
+        // Load the rest of the user's data only after authentication succeeds.
+        syncDatabase(showFeedback = false)
+        checkAppUpdate(userInitiated = false)
       } else {
-        onError("NIK atau password salah. Coba NIK: SJ001 / Pass: 123 atau NIK: SJ003 / Pass: admin")
+        onError("Login gagal. Periksa NIK/password dan pastikan Web App Google Apps Script masih aktif.")
       }
     }
   }
 
-  fun logout() {
-    _currentUser.value = null
-    _currentPage.value = AppPage.HOME
-  }
+  fun logout() { _currentUser.value = null; _currentPage.value = AppPage.HOME }
 
   fun switchUser(nik: String) {
     viewModelScope.launch {
@@ -252,11 +222,9 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
 
   fun toggleGpsTestLocation(insideOffice: Boolean) {
     if (insideOffice) {
-      // 18 meters from office
       setGpsLocation(-8.17242, 113.69948, 12f)
       emitMessage("Lokasi diset: Dalam radius kantor (18m - Valid)")
     } else {
-      // 350 meters outside office
       setGpsLocation(-8.17550, 113.70250, 20f)
       emitMessage("Lokasi diset: Di luar radius kantor (350m - Tidak Valid)")
     }
@@ -265,14 +233,11 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
   private fun updateGpsDistance() {
     val cur = _gpsState.value
     val distance = calculateHaversine(cur.lat, cur.lng, cur.officeLat, cur.officeLng)
-    _gpsState.value = cur.copy(
-      distanceToOfficeMeters = distance.toInt(),
-      isWithinGeofence = distance <= cur.geofenceRadiusMeters
-    )
+    _gpsState.value = cur.copy(distanceToOfficeMeters = distance.toInt(), isWithinGeofence = distance <= cur.geofenceRadiusMeters)
   }
 
   private fun calculateHaversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-    val r = 6371000.0 // Earth radius in meters
+    val r = 6371000.0
     val dLat = Math.toRadians(lat2 - lat1)
     val dLon = Math.toRadians(lon2 - lon1)
     val a = sin(dLat / 2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
@@ -280,68 +245,38 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
     return r * c
   }
 
-  fun setCapturedSelfie(uri: String?) {
-    _capturedSelfieUri.value = uri
-  }
+  fun setCapturedSelfie(uri: String?) { _capturedSelfieUri.value = uri }
 
   fun openCameraAttendance(type: String? = null) {
     val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     val user = _currentUser.value
     val todayAtt = allAttendances.value.firstOrNull { it.nik == user?.nik && it.tanggal == todayDate }
-    val determinedType = type ?: if (todayAtt?.jamMasuk == null) {
-      "masuk"
-    } else if (todayAtt.jamPulang == null) {
-      "pulang"
-    } else {
-      "masuk"
-    }
+    val determinedType = type ?: if (todayAtt?.jamMasuk == null) "masuk" else if (todayAtt.jamPulang == null) "pulang" else "masuk"
     _cameraAttendanceType.value = determinedType
   }
 
-  fun closeCameraAttendance() {
-    _cameraAttendanceType.value = null
-  }
+  fun closeCameraAttendance() { _cameraAttendanceType.value = null }
 
-  fun performAttendance(type: String, photoUrl: String? = null) { // "masuk" or "pulang"
+  fun performAttendance(type: String, photoUrl: String? = null) {
     val user = _currentUser.value ?: return
     val gps = _gpsState.value
-
     if (!gps.isWithinGeofence) {
       emitMessage("Presensi ditolak! Jarak Anda ${gps.distanceToOfficeMeters}m dari kantor (Maksimal 100m).")
       return
     }
-
     val finalPhoto = photoUrl ?: _capturedSelfieUri.value
     val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     val nowTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-
     viewModelScope.launch {
-      if (type == "masuk") {
-        val res = repository.clockIn(
-          nik = user.nik,
-          date = todayDate,
-          time = nowTime,
-          distanceMeters = gps.distanceToOfficeMeters,
-          photoUrl = finalPhoto
-        )
-        if (res.isSuccess) {
-          emitMessage("Berhasil absen masuk pada $nowTime dengan foto kamera.")
-        } else {
-          emitMessage("Gagal absen: ${res.exceptionOrNull()?.message}")
-        }
+      val res = if (type == "masuk") {
+        repository.clockIn(user.nik, todayDate, nowTime, gps.distanceToOfficeMeters, finalPhoto)
       } else {
-        val res = repository.clockOut(
-          nik = user.nik,
-          date = todayDate,
-          time = nowTime,
-          distanceMeters = gps.distanceToOfficeMeters,
-          photoUrl = finalPhoto
-        )
-        if (res.isSuccess) {
-          emitMessage("Berhasil absen pulang pada $nowTime dengan foto kamera.")
-        } else {
-          emitMessage("Gagal absen: ${res.exceptionOrNull()?.message}")
-        }
+        repository.clockOut(user.nik, todayDate, nowTime, gps.distanceToOfficeMeters, finalPhoto)
+      }
+      if (res.isSuccess) {
+        emitMessage("Berhasil absen ${if (type == "masuk") "masuk" else "pulang"} pada $nowTime dengan foto kamera.")
+      } else {
+        emitMessage("Gagal absen: ${res.exceptionOrNull()?.message ?: "server tidak merespons"}")
       }
       closeCameraAttendance()
     }
@@ -349,26 +284,17 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
 
   fun submitKasbon(amount: Long, reason: String) {
     val user = _currentUser.value ?: return
-    viewModelScope.launch {
-      repository.submitKasbon(user.nik, user.nama, amount, reason)
-      emitMessage("Pengajuan kasbon sebesar Rp ${Number(amount)} berhasil dikirim.")
-    }
+    viewModelScope.launch { repository.submitKasbon(user.nik, user.nama, amount, reason); emitMessage("Pengajuan kasbon sebesar Rp ${Number(amount)} berhasil dikirim.") }
   }
 
   fun submitCuti(jenis: String, start: String, end: String, reason: String) {
     val user = _currentUser.value ?: return
-    viewModelScope.launch {
-      repository.submitCuti(user.nik, user.nama, jenis, start, end, reason)
-      emitMessage("Pengajuan $jenis berhasil dikirim.")
-    }
+    viewModelScope.launch { repository.submitCuti(user.nik, user.nama, jenis, start, end, reason); emitMessage("Pengajuan $jenis berhasil dikirim.") }
   }
 
   fun submitLembur(date: String, start: String, end: String, desc: String) {
     val user = _currentUser.value ?: return
-    viewModelScope.launch {
-      repository.submitLembur(user.nik, user.nama, date, start, end, desc)
-      emitMessage("Pengajuan lembur tanggal $date berhasil dikirim.")
-    }
+    viewModelScope.launch { repository.submitLembur(user.nik, user.nama, date, start, end, desc); emitMessage("Pengajuan lembur tanggal $date berhasil dikirim.") }
   }
 
   fun approveApproval(type: String, id: String) {
@@ -393,71 +319,17 @@ class HrisViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
-  fun saveEmployee(employee: EmployeeEntity) {
-    viewModelScope.launch {
-      repository.saveEmployee(employee)
-      emitMessage("Data karyawan ${employee.nama} tersimpan.")
-    }
-  }
+  fun saveEmployee(employee: EmployeeEntity) { viewModelScope.launch { repository.saveEmployee(employee); syncDatabase(false); emitMessage("Data karyawan disimpan ke Google Sheets.") } }
+  fun deleteEmployee(nik: String) { viewModelScope.launch { repository.deleteEmployee(nik); syncDatabase(false); emitMessage("Karyawan $nik dihapus dari Google Sheets.") } }
+  fun saveShift(shift: ShiftEntity) { viewModelScope.launch { repository.saveShift(shift); syncDatabase(false); emitMessage("Shift ${shift.namaShift} disimpan.") } }
+  fun deleteShift(id: String) { viewModelScope.launch { repository.deleteShift(id); syncDatabase(false); emitMessage("Shift dihapus.") } }
+  fun markPayrollPaid(id: String) { viewModelScope.launch { repository.markPayrollPaid(id); syncDatabase(false); emitMessage("Payroll $id ditandai lunas.") } }
+  fun generatePayroll(periode: String, targetNik: String = "") { viewModelScope.launch { repository.generatePayroll(periode, targetNik); syncDatabase(false); emitMessage("Payroll $periode diproses.") } }
+  fun addAnnouncement(judul: String, isi: String, kategori: String) { viewModelScope.launch { repository.addAnnouncement(judul, isi, kategori); syncDatabase(false); emitMessage("Pengumuman ditambahkan.") } }
 
-  fun deleteEmployee(nik: String) {
-    viewModelScope.launch {
-      repository.deleteEmployee(nik)
-      emitMessage("Karyawan $nik dihapus.")
-    }
-  }
+  fun updateEmployeePhoto(nik: String, photoUrl: String) { viewModelScope.launch { repository.updateEmployeePhoto(nik, photoUrl) } }
 
-  fun saveShift(shift: ShiftEntity) {
-    viewModelScope.launch {
-      repository.saveShift(shift)
-      emitMessage("Shift ${shift.namaShift} tersimpan.")
-    }
-  }
-
-  fun deleteShift(shiftId: String) {
-    viewModelScope.launch {
-      repository.deleteShift(shiftId)
-      emitMessage("Shift $shiftId dihapus.")
-    }
-  }
-
-  fun generatePayroll(periode: String, targetNik: String = "") {
-    viewModelScope.launch {
-      repository.generatePayroll(periode, targetNik)
-      emitMessage("Payroll periode $periode berhasil di-generate.")
-    }
-  }
-
-  fun markPayrollPaid(id: String) {
-    viewModelScope.launch {
-      repository.markPayrollPaid(id)
-      emitMessage("Slip $id ditandai sebagai Sudah Dibayar (Paid).")
-    }
-  }
-
-  fun addAnnouncement(judul: String, isi: String, kategori: String) {
-    viewModelScope.launch {
-      repository.addAnnouncement(judul, isi, kategori)
-      emitMessage("Pengumuman berhasil diterbitkan.")
-    }
-  }
-
-  fun updateProfilePhoto(uri: String) {
-    val user = _currentUser.value ?: return
-    viewModelScope.launch {
-      repository.updateEmployeePhoto(user.nik, uri)
-      _currentUser.value = _currentUser.value?.copy(fotoUrl = uri)
-      emitMessage("Foto profil diperbarui.")
-    }
-  }
-
-  fun emitMessage(msg: String) {
-    viewModelScope.launch {
-      _snackbarMessage.emit(msg)
-    }
-  }
-
-  private fun Number(n: Long): String {
-    return String.format(Locale.GERMANY, "%,d", n)
+  private fun emitMessage(message: String) {
+    viewModelScope.launch { _snackbarMessage.emit(message) }
   }
 }
