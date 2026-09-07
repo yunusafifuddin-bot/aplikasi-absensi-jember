@@ -5,6 +5,11 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
+/**
+ * Room is only a temporary cache. Google Sheets / Apps Script is the source of truth.
+ * Because cached data can always be rebuilt from the server, schema changes may safely
+ * recreate the local database instead of risking an application crash on startup.
+ */
 @Database(
   entities = [
     EmployeeEntity::class,
@@ -16,7 +21,7 @@ import androidx.room.RoomDatabase
     PayrollEntity::class,
     AnnouncementEntity::class
   ],
-  version = 1,
+  version = 2,
   exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -39,7 +44,11 @@ abstract class AppDatabase : RoomDatabase() {
           context.applicationContext,
           AppDatabase::class.java,
           "sukses_jaya_hris.db"
-        ).build()
+        )
+          // Local data is only a cache, so rebuilding it is safe and prevents
+          // Room schema-mismatch crashes after an application update.
+          .fallbackToDestructiveMigration()
+          .build()
         INSTANCE = instance
         instance
       }
