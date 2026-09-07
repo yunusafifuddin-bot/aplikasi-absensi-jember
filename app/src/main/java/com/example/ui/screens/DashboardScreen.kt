@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.ui.components.AvatarCircle
-import com.example.ui.components.StatusBadge
 import com.example.ui.viewmodel.AppPage
 import com.example.ui.viewmodel.GpsLocationState
 import com.example.ui.viewmodel.HrisViewModel
@@ -63,7 +62,6 @@ fun DashboardScreen(viewModel: HrisViewModel, onOpenDrawer: (() -> Unit)? = null
     if (fine || coarse) updateCurrentLocation(context, viewModel)
     else locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
   }
-
   LaunchedEffect(Unit) { requestOrRefreshLocation() }
 
   Box(modifier.fillMaxSize().background(Color(0xFFF1F5F9))) {
@@ -92,12 +90,9 @@ fun DashboardScreen(viewModel: HrisViewModel, onOpenDrawer: (() -> Unit)? = null
         }
       }
 
-      Button(
-        onClick = { if (!hasIn) { requestOrRefreshLocation(); viewModel.openCameraAttendance("masuk") } else if (!hasOut) { requestOrRefreshLocation(); viewModel.openCameraAttendance("pulang") } },
-        enabled = gps.isWithinGeofence && !hasOut,
-        modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = if (!hasIn) Color(0xFF16A34A) else Color(0xFFDC2626), disabledContainerColor = Color(0xFFCBD5E1))
-      ) { Icon(Icons.Default.CameraAlt, null); Spacer(Modifier.width(8.dp)); Text(when { !hasIn -> "ABSEN MASUK"; !hasOut -> "ABSEN PULANG"; else -> "ABSENSI SELESAI" }, fontWeight = FontWeight.Black, fontSize = 15.sp) }
+      Button(onClick = { if (!hasIn) { requestOrRefreshLocation(); viewModel.openCameraAttendance("masuk") } else if (!hasOut) { requestOrRefreshLocation(); viewModel.openCameraAttendance("pulang") } }, enabled = gps.isWithinGeofence && !hasOut, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = if (!hasIn) Color(0xFF16A34A) else Color(0xFFDC2626), disabledContainerColor = Color(0xFFCBD5E1))) {
+        Icon(Icons.Default.CameraAlt, null); Spacer(Modifier.width(8.dp)); Text(when { !hasIn -> "ABSEN MASUK"; !hasOut -> "ABSEN PULANG"; else -> "ABSENSI SELESAI" }, fontWeight = FontWeight.Black, fontSize = 15.sp)
+      }
 
       if (hasIn && !hasOut) Text("Absen masuk ${todayAttendance?.jamMasuk} sudah tercatat. Berikutnya hanya absen pulang.", fontSize = 12.sp, color = Color(0xFF166534), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
       if (hasOut) Text("Absen masuk dan pulang hari ini sudah lengkap. Tidak dapat melakukan double absen.", fontSize = 12.sp, color = Color(0xFF991B1B), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
@@ -116,7 +111,7 @@ fun DashboardScreen(viewModel: HrisViewModel, onOpenDrawer: (() -> Unit)? = null
 
       Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(16.dp)) {
-          Text("Sumber Data", fontWeight = FontWeight.Black, fontSize = 16.sp); Spacer(Modifier.height(6.dp)
+          Text("Sumber Data", fontWeight = FontWeight.Black, fontSize = 16.sp); Spacer(Modifier.height(6.dp))
           Text("Google Sheets / Google Apps Script", fontWeight = FontWeight.Bold, fontSize = 13.sp)
           Text("Data lokal tidak digunakan sebagai sumber kebenaran. Cache lokal hanya diperbarui setelah sinkronisasi remote.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -128,7 +123,6 @@ fun DashboardScreen(viewModel: HrisViewModel, onOpenDrawer: (() -> Unit)? = null
 }
 
 @Composable private fun AttendanceTile(label: String, time: String, color: Color, done: Boolean, modifier: Modifier) { Card(modifier, shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = if (done) color.copy(alpha = .10f) else Color(0xFFF8FAFC))) { Column(Modifier.padding(14.dp)) { Text(label, color = color, fontWeight = FontWeight.Bold, fontSize = 10.sp); Text(time, fontWeight = FontWeight.Black, fontSize = 21.sp); Text(if (done) "Tercatat" else "Belum", fontSize = 11.sp) } } }
-
 @Composable private fun RowScope.QuickButton(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) { OutlinedButton(onClick, Modifier.weight(1f).height(68.dp), contentPadding = PaddingValues(2.dp), shape = RoundedCornerShape(12.dp)) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, Modifier.size(19.dp)); Text(title, fontSize = 9.sp) } } }
 
 @Composable
